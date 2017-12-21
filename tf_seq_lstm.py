@@ -5,7 +5,8 @@ import tensorflow as tf
 import os
 import sys
 
-from tensorflow.python.ops import rnn_cell,rnn
+from tensorflow.python.ops import rnn_cell
+import tensorflow.contrib.rnn as rnn
 from tf_data_utils import extract_seq_data
 
 
@@ -76,7 +77,7 @@ class tf_seqLSTM(object):
     def compute_states(self,emb):
 
         def unpack_sequence(tensor):
-            return tf.unpack(tf.transpose(tensor, perm=[1, 0, 2]))
+            return tf.unstack(tf.transpose(tensor, perm=[1, 0, 2]))
 
 
         with tf.variable_scope("Composition",initializer=
@@ -88,10 +89,10 @@ class tf_seqLSTM(object):
             cell = rnn_cell.DropoutWrapper(cell,
                                            output_keep_prob=self.dropout,input_keep_prob=self.dropout)
             #output, state = rnn.dynamic_rnn(cell,emb,sequence_length=self.lngths,dtype=tf.float32)
-            outputs,_=rnn.rnn(cell,unpack_sequence(emb),sequence_length=self.lngths,dtype=tf.float32)
+            outputs,_=rnn.static_rnn(cell,unpack_sequence(emb),sequence_length=self.lngths,dtype=tf.float32)
             #output = pack_sequence(outputs)
 
-        sum_out=tf.reduce_sum(tf.pack(outputs),[0])
+        sum_out=tf.reduce_sum(tf.stack(outputs),[0])
         sent_rep = tf.div(sum_out,tf.expand_dims(tf.to_float(self.lngths),1))
         final_state=sent_rep
         return final_state
@@ -114,11 +115,12 @@ class tf_seqLSTM(object):
     def calc_loss(self,logits):
 
         l1=tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits,self.labels)
+            logits=logits,labels=self.labels)
         loss=tf.reduce_sum(l1,[0])
         reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         regpart=tf.add_n(reg_losses)
-        total_loss=loss+0.5*regpart
+        
+        total_loss=loss+0.5*regpart            
         return loss,total_loss
 
     def add_training_op_old(self):
@@ -232,7 +234,7 @@ class tf_seqbiLSTM(tf_seqLSTM):
             #output, state = rnn.dynamic_rnn(cell,emb,sequence_length=self.lngths,dtype=tf.float32)
             outputs,_,_=rnn.bidirectional_rnn(cell_fw,cell_bw,unpack_sequence(emb),sequence_length=self.lngths,dtype=tf.float32)
             #output = pack_sequence(outputs)
-        sum_out=tf.reduce_sum(tf.pack(outputs),[0])
+        sum_out=tf.reduce_sum(tf.stack(outputs),[0])
         sent_rep = tf.div(sum_out,tf.expand_dims(tf.to_float(self.lngths),1))
 
 

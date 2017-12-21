@@ -10,8 +10,8 @@ import pickle
 import tf_seq_lstm
 import tf_tree_lstm
 
-DIR = './project_data/sst/'
-GLOVE_DIR ='./'
+DIR = '/home/ashukla/s3/data/sstb_full_splitted/'
+GLOVE_DIR ='/home/ashukla/s3/data/glove/'
 
 
 
@@ -27,23 +27,26 @@ class Config(object):
 
     emb_dim = 300
     hidden_dim = 150
+    #emb_dim = 150
+    #hidden_dim = 50
     output_dim=None
     degree = 2
 
-    num_epochs = 1
+    num_epochs = 10
     early_stopping = 2
-    dropout = 0.5
+    dropout = 1.0
     lr = 0.05
     emb_lr = 0.1
-    reg=0.0001
+    reg=1e-10
 
     batch_size = 5
     #num_steps = 10
     maxseqlen = None
     maxnodesize = None
-    fine_grained=False
+    fine_grained=True
     trainable_embeddings=True
     nonroot_labels=True
+    attn_type = 'tanh'
     #dependency=True not supported
 
 def train(restore=False):
@@ -54,17 +57,17 @@ def train(restore=False):
     data,vocab = utils.load_sentiment_treebank(DIR,config.fine_grained)
 
     train_set, dev_set, test_set = data['train'], data['dev'], data['test']
-    print 'train', len(train_set)
-    print 'dev', len(dev_set)
-    print 'test', len(test_set)
+    print ('train', len(train_set))
+    print ('dev', len(dev_set))
+    print ('test', len(test_set))
 
     num_emb = len(vocab)
     num_labels = 5 if config.fine_grained else 3
     for _, dataset in data.items():
         labels = [label for _, label in dataset]
-        assert set(labels) <= set(xrange(num_labels)), set(labels)
-    print 'num emb', num_emb
-    print 'num labels', num_labels
+        assert set(labels) <= set(range(num_labels)), set(labels)
+    print ('num emb', num_emb)
+    print ('num labels', num_labels)
 
     config.num_emb=num_emb
     config.output_dim = num_labels
@@ -72,7 +75,7 @@ def train(restore=False):
     config.maxseqlen=utils.get_max_len_data(data)
     config.maxnodesize=utils.get_max_node_size(data)
 
-    print config.maxnodesize,config.maxseqlen ," maxsize"
+    print (config.maxnodesize,config.maxseqlen ," maxsize")
     #return 
     random.seed()
     np.random.seed()
@@ -81,7 +84,8 @@ def train(restore=False):
     with tf.Graph().as_default():
 
         #model = tf_seq_lstm.tf_seqLSTM(config)
-        model = tf_tree_lstm.tf_NarytreeLSTM(config)
+        #model = tf_tree_lstm.tf_NarytreeLSTM(config)
+        model = tf_tree_lstm.tf_NarytreeAttention(config)
 
         init=tf.initialize_all_variables()
         saver = tf.train.Saver()
@@ -96,13 +100,13 @@ def train(restore=False):
 
             if restore:saver.restore(sess,'./ckpt/tree_rnn_weights')
             for epoch in range(config.num_epochs):
-                print 'epoch', epoch
+                print ('epoch', epoch)
                 avg_loss=0.0
                 avg_loss = train_epoch(model, train_set,sess)
-                print 'avg loss', avg_loss
+                print ('avg loss', avg_loss)
 
                 dev_score=evaluate(model,dev_set,sess)
-                print 'dev-scoer', dev_score
+                print ('dev-scoer', dev_score)
 
                 if dev_score > best_valid_score:
                     best_valid_score=dev_score
@@ -112,10 +116,10 @@ def train(restore=False):
                 if epoch -best_valid_epoch > config.early_stopping:
                     break
 
-                print "time per epochis {0}".format(
-                    time.time()-start_time)
+                print ("time per epochis {0}".format(
+                    time.time()-start_time))
             test_score = evaluate(model,test_set,sess)
-            print test_score,'test_score'
+            print (test_score,'test_score')
 
 def train_epoch(model,data,sess):
 

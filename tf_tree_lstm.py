@@ -58,7 +58,7 @@ class tf_NarytreeLSTM(object):
         self.labels = tf.placeholder(tf.int32,[dim1,dim2],name='labels')
         self.dropout = tf.placeholder(tf.float32,name='dropout')
 
-        self.n_inodes = tf.reduce_sum(tf.to_int32(tf.not_equal(self.treestr,-1)),[1,2])
+        self.n_inodes = tf.cast(tf.reduce_sum(tf.to_int32(tf.not_equal(self.treestr,-1)),[1,2]), tf.int32)
         self.n_inodes = self.n_inodes/2
 
         self.num_leaves = tf.reduce_sum(tf.to_int32(tf.not_equal(self.input,-1)),[1])
@@ -100,7 +100,7 @@ class tf_NarytreeLSTM(object):
             def _recurseleaf(x):
 
                 concat_uo = tf.matmul(tf.expand_dims(x,0),cU) + b
-                u,o = tf.split(1,2,concat_uo)
+                u,o = tf.split(concat_uo, 2, axis=1)
                 o=tf.nn.sigmoid(o)
                 u=tf.nn.tanh(u)
 
@@ -108,7 +108,7 @@ class tf_NarytreeLSTM(object):
                 h = o * tf.nn.tanh(c)
 
 
-                hc = tf.concat(1,[h,c])
+                hc = tf.concat([h,c], 1)
                 hc=tf.squeeze(hc)
                 return hc
 
@@ -138,24 +138,23 @@ class tf_NarytreeLSTM(object):
             prediction.append(pred_root)
             outloss.append(loss)
 
-        batch_loss=tf.pack(outloss)
-        self.pred = tf.pack(prediction)
+        batch_loss=tf.stack(outloss)
+        self.pred = tf.stack(prediction)
 
         return batch_loss
 
 
     def compute_states(self,emb,idx_batch=0):
 
-
         num_leaves = tf.squeeze(tf.gather(self.num_leaves,idx_batch))
         #num_leaves=tf.Print(num_leaves,[num_leaves])
-        n_inodes = tf.gather(self.n_inodes,idx_batch)
+        n_inodes = tf.cast(tf.gather(self.n_inodes,idx_batch), tf.int32)
         #embx=tf.gather(emb,tf.range(num_leaves))
         embx=tf.gather(tf.gather(emb,idx_batch),tf.range(num_leaves))
         #treestr=self.treestr#tf.gather(self.treestr,tf.range(self.n_inodes))
         treestr=tf.gather(tf.gather(self.treestr,idx_batch),tf.range(n_inodes))
         leaf_hc = self.process_leafs(embx)
-        leaf_h,leaf_c=tf.split(1,2,leaf_hc)
+        leaf_h,leaf_c=tf.split(leaf_hc, 2, axis=1)
 
 
         node_h=tf.identity(leaf_h)
@@ -167,7 +166,7 @@ class tf_NarytreeLSTM(object):
 
             cW = tf.get_variable("cW",[self.degree*self.hidden_dim,(self.degree+3)*self.hidden_dim])
             cb = tf.get_variable("cb",[4*self.hidden_dim])
-            bu,bo,bi,bf=tf.split(0,4,cb)
+            bu,bo,bi,bf=tf.split(cb, 4, axis=0)
 
             def _recurrence(node_h,node_c,idx_var):
                 node_info=tf.gather(treestr,idx_var)
@@ -177,7 +176,7 @@ class tf_NarytreeLSTM(object):
 
                 flat_ = tf.reshape(child_h,[-1])
                 tmp=tf.matmul(tf.expand_dims(flat_,0),cW)
-                u,o,i,fl,fr=tf.split(1,5,tmp)
+                u,o,i,fl,fr=tf.split(tmp, 5, axis=1)
 
                 i=tf.nn.sigmoid(i+bi)
                 o=tf.nn.sigmoid(o+bo)
@@ -185,13 +184,13 @@ class tf_NarytreeLSTM(object):
                 fl=tf.nn.sigmoid(fl+bf)
                 fr=tf.nn.sigmoid(fr+bf)
 
-                f=tf.concat(0,[fl,fr])
+                f=tf.concat([fl,fr], 0)
                 c = i * u + tf.reduce_sum(f*child_c,[0])
                 h = o * tf.nn.tanh(c)
 
-                node_h = tf.concat(0,[node_h,h])
+                node_h = tf.concat([node_h,h], 0)
 
-                node_c = tf.concat(0,[node_c,c])
+                node_c = tf.concat([node_c,c], 0)
 
                 idx_var=tf.add(idx_var,1)
 
@@ -209,8 +208,7 @@ class tf_NarytreeLSTM(object):
 
         with tf.variable_scope("Projection",reuse=True):
 
-            U = tf.get_variable("U",[self.output_dim,self.hidden_dim],
-                                )
+            U = tf.get_variable("U", [self.output_dim, self.hidden_dim])
             bu = tf.get_variable("bu",[self.output_dim])
 
             h=tf.matmul(tree_states,U,transpose_b=True)+bu
@@ -221,7 +219,7 @@ class tf_NarytreeLSTM(object):
     def calc_loss(self,logits,labels):
 
         l1=tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits,labels)
+            logits=logits,labels=labels)
         loss=tf.reduce_sum(l1,[0])
         return loss
 
@@ -234,15 +232,17 @@ class tf_NarytreeLSTM(object):
 
     def add_training_op_old(self):
 
-        opt = tf.train.AdagradOptimizer(self.config.lr)
+        #opt = tf.train.AdagradOptimizer(self.config.lr)
+        opt = tf.train.AdamOptimizer()
         train_op = opt.minimize(self.total_loss)
         return train_op
 
     def add_training_op(self):
         loss=self.total_loss
-        opt1=tf.train.AdagradOptimizer(self.config.lr)
-        opt2=tf.train.AdagradOptimizer(self.config.emb_lr)
-
+        #opt1=tf.train.AdagradOptimizer(self.config.lr)
+        #opt2=tf.train.AdagradOptimizer(self.config.emb_lr)
+        opt1 = tf.train.AdamOptimizer()
+        opt2 = tf.train.AdamOptimizer()
         ts=tf.trainable_variables()
         gs=tf.gradients(loss,ts)
         gs_ts=zip(gs,ts)
@@ -268,7 +268,7 @@ class tf_NarytreeLSTM(object):
 
     def train(self,data,sess):
         from random import shuffle
-        data_idxs=range(len(data))
+        data_idxs=list(range(len(data)))
         shuffle(data_idxs)
         losses=[]
         for i in range(0,len(data),self.batch_size):
@@ -323,6 +323,94 @@ class tf_NarytreeLSTM(object):
         acc=float(num_correct)/float(total_data)
         return acc
 
+class tf_NarytreeAttention(tf_NarytreeLSTM):
+    def __init__(self, config):
+        self.attn_type = config.attn_type
+        super(tf_NarytreeAttention, self).__init__(config)
+
+    def add_model_variables(self):
+        with tf.variable_scope("Composition",
+                               initializer=tf.contrib.layers.xavier_initializer(),
+                               regularizer=tf.contrib.layers.l2_regularizer(self.config.reg)):
+            q=tf.get_variable("query",shape=[self.hidden_dim])
+            qb=tf.get_variable("query_bias",shape=[self.hidden_dim])
+            ker=tf.get_variable("xform_kernel", shape=[self.hidden_dim, self.hidden_dim])
+            b=tf.get_variable("xform_bias", shape=[self.hidden_dim])
+            P = tf.get_variable("P",[self.emb_dim,self.hidden_dim])
+            Pb = tf.get_variable("Pb",[self.hidden_dim])
+        with tf.variable_scope("Projection",regularizer=tf.contrib.layers.l2_regularizer(self.config.reg)):
+
+            U = tf.get_variable("U",[self.output_dim,self.hidden_dim],
+                                initializer=tf.random_uniform_initializer(self.calc_wt_init(self.hidden_dim),self.calc_wt_init(self.hidden_dim))
+                                    )
+            bu = tf.get_variable("bu",[self.output_dim],initializer=
+                                 tf.constant_initializer(0.0),regularizer=tf.contrib.layers.l2_regularizer(0.0))
+
+    def _attend(self, memory):
+
+        q = tf.get_variable("query")
+        qb = tf.get_variable("query_bias")
+        ker = tf.get_variable("xform_kernel")
+        b = tf.get_variable("xform_bias")
+            
+        p = tf.tanh(tf.matmul(memory, ker) + b)
+        scores = tf.reduce_sum(p * q, axis=1)
+        if self.attn_type == 'tanh':
+            scores = tf.tanh(scores)
+        elif self.attn_type == 'softmax':
+            scores = tf.nn.softmax(scores)
+        elif self.attn_type == 'relu':
+            scores = tf.nn.relu(scores)
+        else:
+            raise ValueError("Invalid attn_type")
+
+        return tf.reduce_mean(memory * tf.expand_dims(scores, 1), axis=0)
+
+    def process_leafs(self, emb):
+        with tf.variable_scope("Composition",reuse=True):
+            P = tf.get_variable("P")
+            Pb = tf.get_variable("Pb")
+            def _recurseleaf(x):
+                # No attention for leaf nodes. Return the embedding itself.
+                return tf.tanh(tf.squeeze(tf.matmul(tf.expand_dims(x, 0), P)) + Pb)
+
+            hc = tf.map_fn(_recurseleaf,emb)
+            return hc
+    
+    def compute_states(self, emb, idx_batch=0):
+        num_leaves = tf.squeeze(tf.gather(self.num_leaves,idx_batch))
+        n_inodes = tf.cast(tf.gather(self.n_inodes,idx_batch), tf.int32)
+        embx=tf.gather(tf.gather(emb,idx_batch),tf.range(num_leaves))
+        treestr=tf.gather(tf.gather(self.treestr,idx_batch),tf.range(n_inodes))
+        leaf_h = self.process_leafs(embx)
+
+        node_h=tf.identity(leaf_h)
+
+        idx_var=tf.constant(0) #tf.Variable(0,trainable=False)
+        with tf.variable_scope("Composition",reuse=True):
+            def _recurrence(node_h,idx_var):
+                node_info=tf.gather(treestr,idx_var)
+
+                child_h=tf.gather(node_h,node_info)
+
+                # Attention calculation
+                h = self._attend(child_h)
+
+                # BOW
+                #h = tf.reduce_mean(child_h, 0)
+
+                node_h = tf.concat([node_h,tf.expand_dims(h, 0)], 0)
+                idx_var=tf.add(idx_var,1)
+
+                return node_h,idx_var
+
+
+            loop_cond = lambda a1,idx_var: tf.less(idx_var,n_inodes)
+            loop_vars=[node_h,idx_var]
+            node_h,idx_var=tf.while_loop(loop_cond, _recurrence, loop_vars)
+
+        return node_h
+        
 
 class tf_ChildsumtreeLSTM(tf_NarytreeLSTM):
 
@@ -356,7 +444,7 @@ class tf_ChildsumtreeLSTM(tf_NarytreeLSTM):
             def _recurseleaf(x):
 
                 concat_uo = tf.matmul(tf.expand_dims(x,0),U) + b
-                u,o = tf.split(1,2,concat_uo)
+                u,o = tf.split(concat_uo, 2, axis=1)
                 o=tf.nn.sigmoid(o)
                 u=tf.nn.tanh(u)
 

@@ -52,7 +52,7 @@ def load_sentiment_treebank(data_dir,fine_grained):
     #fnlist,arglist=[tNode.relabel],[fine_grained]
 
     data={}
-    for split,path in split_paths.iteritems():
+    for split,path in split_paths.items():
         sentencepath=os.path.join(path,'sents.txt')
         treepath=os.path.join(path,'parents.txt')
         labelpath=os.path.join(path,'labels.txt')
@@ -88,7 +88,7 @@ def parse_tree(sentence,parents,labels):
     nodes = {}
     parents = [p - 1 for p in parents]  #change to zero based
     sentence=[w for w in sentence.strip().split()]
-    for i in xrange(len(parents)):
+    for i in range(len(parents)):
         if i not in nodes:
             idx = i
             prev = None
@@ -169,7 +169,7 @@ def extract_tree_data(tree,max_degree=2,only_leaves_have_vals=True,with_labels=F
                 np.array(labels,dtype=float),
                 np.array(labels_exist,dtype=float))
     else:
-        print leaf_emb,'asas'
+        print (leaf_emb,'asas')
         return (np.array(leaf_emb,dtype='int32'),
                np.array(tree_str,dtype='int32'))
 
@@ -243,7 +243,7 @@ def extract_seq_from_tree(tree,numsamples=0):
 
     tree.postOrder(tree,func_,subtrees)
 
-    for j in xrange(numsamples):#sampled_idxs:
+    for j in range(numsamples):#sampled_idxs:
         i=random.randint(0,num_nodes)
         root = subtrees[i]
         s,l=root.span,root.label
@@ -279,13 +279,13 @@ def test_fn():
     fine_grained=0
     data,_=load_sentiment_treebank(data_dir,fine_grained)
     for d in data.itervalues():
-        print len(d)
+        print (len(d))
 
     d=data['dev']
     a,b,c,_=extract_seq_data(d[0:1],5)
-    print a,b,c
+    print (a,b,c)
 
-    print get_max_len_data(data)
+    print (get_max_len_data(data))
     return data
 if __name__=='__main__':
     test_fn()
